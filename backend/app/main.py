@@ -1,3 +1,4 @@
+from .services.anomaly import detect_anomaly
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 
@@ -17,11 +18,22 @@ def root():
 
 @app.post("/telemetry", response_model=schemas.TelemetryResponse)
 def create_telemetry(data: schemas.TelemetryCreate, db: Session = Depends(get_db)):
+    # Aynı cihazın geçmiş sıcaklık değerlerini çek
+    past_temps = [
+        row.temperature
+        for row in db.query(models.TelemetryData)
+        .filter(models.TelemetryData.device_id == data.device_id)
+        .all()
+    ]
+
+    is_anomaly = detect_anomaly(data.temperature, past_temps)
+
     db_record = models.TelemetryData(
         device_id=data.device_id,
         temperature=data.temperature,
         cpu_usage=data.cpu_usage,
         memory_usage=data.memory_usage,
+        is_anomaly=int(is_anomaly),
     )
     db.add(db_record)
     db.commit()
