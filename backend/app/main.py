@@ -1,4 +1,5 @@
 from .services.anomaly import detect_anomaly
+from typing import Optional
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,30 @@ def create_telemetry(data: schemas.TelemetryCreate, db: Session = Depends(get_db
     db.refresh(db_record)
     return db_record
 
+
 @app.get("/telemetry", response_model=List[schemas.TelemetryResponse])
-def list_telemetry(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(models.TelemetryData).offset(skip).limit(limit).all()
+def list_telemetry(
+    skip: int = 0,
+    limit: int = 100,
+    device_id: Optional[str] = None,
+    only_anomalies: bool = False,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.TelemetryData)
+
+    if device_id:
+        query = query.filter(models.TelemetryData.device_id == device_id)
+    if only_anomalies:
+        query = query.filter(models.TelemetryData.is_anomaly == 1)
+
+    return query.offset(skip).limit(limit).all()
+@app.get("/stats")
+def get_stats(db: Session = Depends(get_db)):
+    total = db.query(models.TelemetryData).count()
+    anomalies = db.query(models.TelemetryData).filter(models.TelemetryData.is_anomaly == 1).count()
+
+    return {
+        "total_records": total,
+        "anomaly_count": anomalies,
+        "anomaly_rate": round(anomalies / total, 3) if total > 0 else 0,
+    }
